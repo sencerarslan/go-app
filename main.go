@@ -18,7 +18,7 @@ func main() {
 	router.Use(gin.Recovery())
 
 	// Routes
-	routes.SetupUserRoutes(router)
+	routes.SetupRoutes(router)
 
 	// Start server
 	router.Run(":8080")

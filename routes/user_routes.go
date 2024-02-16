@@ -10,15 +10,23 @@ import (
 )
 
 func SetupUserRoutes(router *gin.Engine) {
+
+	authRoutes := router.Group("/auth")
+	{
+		authRoutes.POST("/validateToken", controllers.Me)
+	}
+
 	userRoutes := router.Group("/user")
 	{
-		userRoutes.POST("/delete", middleware.SessionMiddleware(), controllers.DeleteUser)
-		userRoutes.GET("/", middleware.SessionMiddleware(), controllers.GetUsers)
+		userRoutes.POST("/delete", middleware.AuthMiddleware(), controllers.DeleteUser)
+		userRoutes.GET("/", middleware.AuthMiddleware(), controllers.AllUsers)
+		userRoutes.GET("/:id", middleware.AuthMiddleware(), controllers.GetUserByID)
 	}
 
 	accountRoutes := router.Group("/account")
 	{
-		accountRoutes.POST("/login", middleware.SessionMiddleware(), controllers.Login)
-		userRoutes.POST("/register", middleware.SessionMiddleware(), controllers.Register)
+		accountRoutes.POST("/login", controllers.Login)
+		accountRoutes.POST("/register", controllers.Register)
 	}
+
 }

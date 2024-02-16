@@ -4,6 +4,7 @@ package controllers
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"net/http"
 
@@ -17,7 +18,76 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
-func GetUsers(c *gin.Context) {
+func FetchUserByID(userID string) (models.User, error) {
+	collection := utils.GetDB().Collection("users")
+	user := models.User{}
+	err := collection.FindOne(context.Background(), bson.M{"_id": userID}).Decode(&user)
+	return user, err
+}
+func FetchUserByEmail(email string) (models.User, error) {
+	collection := utils.GetDB().Collection("users")
+	user := models.User{}
+	err := collection.FindOne(context.Background(), bson.M{"email": email}).Decode(&user)
+	return user, err
+}
+
+func HashPassword(password string) ([]byte, error) {
+	return bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+}
+
+func ComparePasswords(hashedPassword []byte, password string) error {
+	return bcrypt.CompareHashAndPassword(hashedPassword, []byte(password))
+}
+
+func SendError(c *gin.Context, err error, message string, statusCode int) {
+	if err == mongo.ErrNoDocuments {
+		message = "Resource not found"
+	}
+	apiErr := utils.NewAPIError(message, statusCode)
+	apiErr.Send(c)
+}
+
+func UserDataWithoutPassword(user models.User) gin.H {
+	return gin.H{
+		"id":       user.ID,
+		"name":     user.Name,
+		"lastname": user.Lastname,
+		"email":    user.Email,
+	}
+}
+
+func GetUserByID(c *gin.Context) {
+	userID := c.Param("id") // URL'den parametre olarak gelen kullanıcı kimliği
+	objectID, err := primitive.ObjectIDFromHex(userID)
+	if err != nil {
+		// Geçersiz ObjectID, hata döndür
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid user ID"})
+		return
+	}
+
+	var user models.User
+	collection := utils.GetDB().Collection("users")
+
+	err = collection.FindOne(context.Background(), bson.M{"_id": objectID}).Decode(&user)
+	if err != nil {
+		if err == mongo.ErrNoDocuments {
+			// Kullanıcı bulunamadı
+			c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
+			return
+		}
+		// Veritabanı hatası
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Database error"})
+		log.Fatal(err)
+		return
+	}
+
+	resUserData := UserDataWithoutPassword(user)
+
+	resp := utils.Response{Data: resUserData, Message: "Successfully", Status: http.StatusCreated}
+	resp.Send(c)
+}
+
+func AllUsers(c *gin.Context) {
 	var users []models.User
 
 	collection := utils.GetDB().Collection("users")
@@ -67,6 +137,7 @@ func DeleteUser(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{"message": "User deleted successfully"})
 }
+
 func Login(c *gin.Context) {
 	var loginData models.User
 	if err := c.BindJSON(&loginData); err != nil {
@@ -74,44 +145,57 @@ func Login(c *gin.Context) {
 		return
 	}
 
-	// Kullanıcıyı veritabanından bul
-	collection := utils.GetDB().Collection("users")
-
-	user := models.User{}
-	err := collection.FindOne(context.Background(), bson.M{"email": loginData.Email}).Decode(&user)
+	user, err := FetchUserByEmail(loginData.Email)
 	if err != nil {
-		if err == mongo.ErrNoDocuments {
-			// Kullanıcı bulunamadı
-			apiErr := utils.NewAPIError("Invalid email or password", http.StatusUnauthorized)
-			apiErr.Send(c)
-			return
-		}
-		// Veritabanı hatası
-		apiErr := utils.NewAPIError("Database error", http.StatusInternalServerError)
-		apiErr.Send(c)
-		log.Fatal(err)
+		SendError(c, err, "Invalid email or password", http.StatusUnauthorized)
 		return
 	}
 
-	// Kullanıcının girdiği şifreyi bcrypt ile hashleme
-	err = bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(loginData.Password))
+	err = ComparePasswords([]byte(user.Password), loginData.Password)
 	if err != nil {
-		// Şifre eşleşmedi
-		apiErr := utils.NewAPIError("Invalid email or password", http.StatusUnauthorized)
-		apiErr.Send(c)
+		SendError(c, err, "Invalid email or password", http.StatusUnauthorized)
 		return
 	}
-
+	// Başarılı giriş, JWT oluştur
+	token, err := utils.CreateToken(user.ID.Hex())
+	if err != nil {
+		SendError(c, err, "Failed to generate token", http.StatusInternalServerError)
+		return
+	}
 	// Şifre eşleşti, giriş başarılı
-	// Kullanıcı verisinden şifre bilgisini kaldır
-	user.Password = ""
 
 	resp := utils.Response{Data: gin.H{
-		"id":       user.ID,
-		"name":     user.Name,
-		"lastname": user.Lastname,
-		"email":    user.Email,
+		"token": token,
+		"a":     "ea",
 	}, Message: "Login successful", Status: http.StatusOK}
+	resp.Send(c)
+}
+
+func Me(c *gin.Context) {
+	tokenString := c.GetHeader("Authorization")
+	if tokenString == "" {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Authorization token is missing"})
+		return
+	}
+
+	userID, err := utils.ValidateToken(tokenString)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized2"})
+		return
+	}
+	fmt.Println("userID:", userID)
+
+	// Kullanıcı verilerini veritabanından al
+	user, err := FetchUserByID(userID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch user data"})
+		return
+	}
+
+	// Kullanıcı verilerini döndür
+	resUserData := UserDataWithoutPassword(user)
+
+	resp := utils.Response{Data: resUserData, Message: "Successfully", Status: http.StatusCreated}
 	resp.Send(c)
 }
 
@@ -123,10 +207,7 @@ func Register(c *gin.Context) {
 		return
 	}
 
-	// E-posta adresi benzersiz olmalıdır, bu yüzden veritabanında var olup olmadığını kontrol ediyoruz
-	collection := utils.GetDB().Collection("users")
-	existingUser := models.User{}
-	err := collection.FindOne(context.Background(), bson.M{"email": user.Email}).Decode(&existingUser)
+	_, err := FetchUserByEmail(user.Email)
 	if err == nil {
 		// E-posta adresi zaten kullanımda, hata döndür
 		apiErr := utils.NewAPIError("Email address is already in use", http.StatusBadRequest)
@@ -140,8 +221,9 @@ func Register(c *gin.Context) {
 		return
 	}
 
-	// Şifreyi bcrypt ile hashle
-	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(user.Password), bcrypt.DefaultCost)
+	collection := utils.GetDB().Collection("users")
+
+	hashedPassword, err := HashPassword(user.Password)
 	if err != nil {
 		apiErr := utils.NewAPIError("Failed to hash password", http.StatusInternalServerError)
 		apiErr.Send(c)
@@ -150,8 +232,7 @@ func Register(c *gin.Context) {
 	}
 
 	// Yeni bir ObjectID oluştur
-	id := primitive.NewObjectID()
-	user.ID = id
+	user.ID = primitive.NewObjectID()
 	user.Password = string(hashedPassword)
 
 	// Kullanıcıyı veritabanına ekle
@@ -163,13 +244,7 @@ func Register(c *gin.Context) {
 		return
 	}
 
-	user.Password = ""
-	resUserData := gin.H{
-		"id":       user.ID,
-		"name":     user.Name,
-		"lastname": user.Lastname,
-		"email":    user.Email,
-	}
+	resUserData := UserDataWithoutPassword(user)
 
 	resp := utils.Response{Data: resUserData, Message: "User created successfully", Status: http.StatusCreated}
 	resp.Send(c)
