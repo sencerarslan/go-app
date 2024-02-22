@@ -1,25 +1,39 @@
-// main.go
-
 package main
 
 import (
-	"go-app/routes"
-	"go-app/utils"
+	"log"
+	"os"
 
 	"github.com/gin-gonic/gin"
+	"github.com/joho/godotenv"
+	routes "github.com/sencerarslan/go-app/routes"
 )
 
 func main() {
-	utils.ConnectDB()
+	err := godotenv.Load(".env")
 
-	router := gin.Default()
+	if err != nil {
+		log.Fatal("Error loading .env file")
+	}
+	port := os.Getenv("PORT")
 
-	// Global middleware
-	router.Use(gin.Recovery())
+	if port == "" {
+		port = "8000"
+	}
 
-	// Routes
-	routes.SetupRoutes(router)
+	router := gin.New()
+	router.Use(gin.Logger())
 
-	// Start server
-	router.Run(":8080")
+	routes.AuthRoutes(router)
+	routes.UserRoutes(router)
+
+	router.GET("/api-1", func(c *gin.Context) {
+		c.JSON(200, gin.H{"success": "Access granted for api-1"})
+	})
+
+	router.GET("/api-2", func(c *gin.Context) {
+		c.JSON(200, gin.H{"success": "Access granted for api-2"})
+	})
+
+	router.Run(":" + port)
 }
