@@ -7,7 +7,7 @@ Bu Go uygulaması, kullanıcıların kayıt olmalarını, giriş yapmalarını v
 1. Bu projeyi klonlayın:
 
    ```bash
-   git clone <https://github.com/sencerarslan/go-app.git>
+   git clone https://github.com/sencerarslan/go-app.git
    ```
 
 2. Gerekli bağımlılıkları yükleyin:
