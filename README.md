@@ -1,6 +1,7 @@
-# Go App
+# QR Menu Uygulaması
 
-Bu Go uygulaması, kullanıcıların kayıt olmalarını, giriş yapmalarını ve kullanıcı verilerini yönetmelerini sağlayan basit bir web uygulamasıdır. Ayrıca, MongoDB veritabanı kullanılarak kullanıcı verileri depolanır.
+Bu QR Menu uygulaması, restoranların menülerini dijitalleştirmek ve müşterilere kolay bir şekilde erişim sağlamak için kullanılır. Bu uygulama, kullanıcıların kaydolmalarını, giriş yapmalarını ve menülerin görüntülemelerini sağlar. 
+
 
 ## Kurulum
 
@@ -16,7 +17,7 @@ Bu Go uygulaması, kullanıcıların kayıt olmalarını, giriş yapmalarını v
    go mod tidy
    ```
 
-3. MongoDB veritabanını çalıştırın ve bağlantı bilgilerini `database.go` dosyasında güncelleyin.
+3. MongoDB veritabanını çalıştırın ve bağlantı bilgilerini `databaseConnection.go` dosyasında güncelleyin.
 
 4. Uygulamayı başlatmak için aşağıdaki komutu çalıştırın:
 
@@ -24,27 +25,6 @@ Bu Go uygulaması, kullanıcıların kayıt olmalarını, giriş yapmalarını v
    go run main.go
    ```
 
-## Kullanım
-
-- `POST /signup`: Yeni bir kullanıcı kaydı oluşturur. JSON formatında kullanıcı bilgilerini alır.
-
-- `POST /login`: Kullanıcı girişi yapar. JSON formatında kullanıcı bilgilerini alır.
-
-- `GET /users`: Tüm kullanıcıları listeler.
-
-- `GET /users/:user_id`: Belirli bir kullanıcıyı alır.
-
-## Gözden Geçirme
-
-Bu projenin belirli işlevlerini kullanabilmek için aşağıdaki adımları izleyin:
-
-1. `Signup` fonksiyonu, yeni bir kullanıcı kaydı oluşturur. Girilen kullanıcı bilgilerini doğrular ve veritabanında kontrol eder.
-
-2. `Login` fonksiyonu, kullanıcı girişi yapar. Girilen bilgileri kontrol eder ve doğrulama işlemi yapar.
-
-3. `GetUsers` fonksiyonu, tüm kullanıcıları listeler. İstenirse sayfalama yapılabilir.
-
-4. `GetUser` fonksiyonu, belirli bir kullanıcıyı alır ve geri döndürür.
 
 ## Teknolojiler
 

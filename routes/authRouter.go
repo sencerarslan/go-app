@@ -6,6 +6,7 @@ import (
 )
 
 func AuthRoutes(incomingRoutes *gin.Engine) {
-	incomingRoutes.POST("/signup", controller.Signup())
+	incomingRoutes.POST("/register", controller.Signup())
 	incomingRoutes.POST("/login", controller.Login())
+	incomingRoutes.POST("/menu/show", controller.ShowMenu())
 }

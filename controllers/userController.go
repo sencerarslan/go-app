@@ -42,45 +42,52 @@ func VerifyPassword(userPassword string, providedPassword string) (bool, string)
 	}
 	return check, msg
 }
-
 func Signup() gin.HandlerFunc {
-
 	return func(c *gin.Context) {
 		var ctx, cancel = context.WithTimeout(context.Background(), 100*time.Second)
 		var user models.User
 
 		if err := c.BindJSON(&user); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			errorResponse := helper.ErrorResponse(nil, err.Error())
+			errorResponse.SendJSON(c.Writer, http.StatusBadRequest)
 			return
 		}
 
 		validationErr := validate.Struct(user)
 		if validationErr != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": validationErr.Error()})
+			errorResponse := helper.ErrorResponse(nil, validationErr.Error())
+			errorResponse.SendJSON(c.Writer, http.StatusBadRequest)
 			return
 		}
 
 		count, err := userCollection.CountDocuments(ctx, bson.M{"email": user.Email})
-		defer cancel()
 		if err != nil {
-			log.Panic(err)
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "error occured while checking for the email"})
+			errorResponse := helper.ErrorResponse(nil, "error occured while checking for the email")
+			errorResponse.SendJSON(c.Writer, http.StatusInternalServerError)
+			return
+		}
+
+		if count > 0 {
+			errorResponse := helper.ErrorResponse(nil, "this email already exists")
+			errorResponse.SendJSON(c.Writer, http.StatusConflict)
+			return
+		}
+
+		count, err = userCollection.CountDocuments(ctx, bson.M{"phone": user.Phone})
+		if err != nil {
+			errorResponse := helper.ErrorResponse(nil, "error occured while checking for the phone number")
+			errorResponse.SendJSON(c.Writer, http.StatusInternalServerError)
+			return
+		}
+
+		if count > 0 {
+			errorResponse := helper.ErrorResponse(nil, "this phone number already exists")
+			errorResponse.SendJSON(c.Writer, http.StatusConflict)
+			return
 		}
 
 		password := HashPassword(*user.Password)
 		user.Password = &password
-
-		count, err = userCollection.CountDocuments(ctx, bson.M{"phone": user.Phone})
-		defer cancel()
-		if err != nil {
-			log.Panic(err)
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "error occured while checking for the phone number"})
-		}
-
-		if count > 0 {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "this email or phone number already exists"})
-			return
-		}
 
 		user.Created_at, _ = time.Parse(time.RFC3339, time.Now().Format(time.RFC3339))
 		user.Updated_at, _ = time.Parse(time.RFC3339, time.Now().Format(time.RFC3339))
@@ -92,14 +99,16 @@ func Signup() gin.HandlerFunc {
 
 		resultInsertionNumber, insertErr := userCollection.InsertOne(ctx, user)
 		if insertErr != nil {
-			msg := fmt.Sprintf("User item was not created")
-			c.JSON(http.StatusInternalServerError, gin.H{"error": msg})
+			errorResponse := helper.ErrorResponse(nil, "User item was not created")
+			errorResponse.SendJSON(c.Writer, http.StatusInternalServerError)
 			return
 		}
-		defer cancel()
-		c.JSON(http.StatusOK, resultInsertionNumber)
-	}
 
+		response := resultInsertionNumber
+		successResponse := helper.SuccessResponse(response, "User successfully created")
+		successResponse.SendJSON(c.Writer, http.StatusOK)
+		cancel()
+	}
 }
 
 func Login() gin.HandlerFunc {
@@ -109,36 +118,45 @@ func Login() gin.HandlerFunc {
 		var foundUser models.User
 
 		if err := c.BindJSON(&user); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			errorResponse := helper.ErrorResponse(nil, err.Error())
+			errorResponse.SendJSON(c.Writer, http.StatusBadRequest)
 			return
 		}
 
 		err := userCollection.FindOne(ctx, bson.M{"email": user.Email}).Decode(&foundUser)
 		defer cancel()
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "email or password is incorrect"})
+			errorResponse := helper.ErrorResponse(nil, "email or password is incorrect")
+			errorResponse.SendJSON(c.Writer, http.StatusUnauthorized)
 			return
 		}
 
 		passwordIsValid, msg := VerifyPassword(*user.Password, *foundUser.Password)
 		defer cancel()
-		if passwordIsValid != true {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": msg})
+		if !passwordIsValid {
+			errorResponse := helper.ErrorResponse(nil, msg)
+			errorResponse.SendJSON(c.Writer, http.StatusUnauthorized)
 			return
 		}
 
 		if foundUser.Email == nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "user not found"})
+			errorResponse := helper.ErrorResponse(nil, "user not found")
+			errorResponse.SendJSON(c.Writer, http.StatusUnauthorized)
+			return
 		}
+
 		token, refreshToken, _ := helper.GenerateAllTokens(*foundUser.Email, *foundUser.First_name, *foundUser.Last_name, *foundUser.User_type, foundUser.User_id)
 		helper.UpdateAllTokens(token, refreshToken, foundUser.User_id)
 		err = userCollection.FindOne(ctx, bson.M{"user_id": foundUser.User_id}).Decode(&foundUser)
 
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			errorResponse := helper.ErrorResponse(nil, err.Error())
+			errorResponse.SendJSON(c.Writer, http.StatusInternalServerError)
 			return
 		}
-		c.JSON(http.StatusOK, foundUser)
+
+		successResponse := helper.SuccessResponse(foundUser, "")
+		successResponse.SendJSON(c.Writer, http.StatusOK)
 	}
 }
 

@@ -6,11 +6,13 @@ import (
 	"github.com/sencerarslan/go-app/middleware"
 )
 
-func MenuRoutes(incomingRoutes *gin.Engine) {
-	incomingRoutes.GET("/menu/:menu_id", controller.GetMenu())
-}
-
 func AuthMenuRoutes(incomingRoutes *gin.Engine) {
 	incomingRoutes.Use(middleware.Authenticate())
-	incomingRoutes.POST("/menu/new", controller.AddMenu())
+
+	incomingRoutes.GET("/all-menu", controller.AllGetMenu())
+	incomingRoutes.POST("/menu", controller.GetMenu())
+	incomingRoutes.POST("/menu/add", controller.AddMenu())
+	incomingRoutes.POST("/menu/item/add", controller.AddMenuItem())
+	incomingRoutes.POST("/menu/item/delete", controller.DeleteMenuItem())
+
 }

@@ -4,6 +4,7 @@ import (
 	"log"
 	"os"
 
+	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
 	routes "github.com/sencerarslan/go-app/routes"
@@ -21,12 +22,17 @@ func main() {
 		port = "8000"
 	}
 
-	router := gin.New()
-	router.Use(gin.Logger())
+	router := gin.Default()
+
+	// CORS middleware
+	config := cors.DefaultConfig()
+	config.AllowOrigins = []string{"*"}
+	config.AllowMethods = []string{"GET", "POST"}
+	config.AllowHeaders = []string{"Content-Type", "Authorization", "Token"}
+	router.Use(cors.New(config))
 
 	routes.AuthRoutes(router)
 	routes.UserRoutes(router)
-	routes.MenuRoutes(router)
 	routes.AuthMenuRoutes(router)
 
 	router.Run(":" + port)
