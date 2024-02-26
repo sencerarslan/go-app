@@ -159,26 +159,28 @@ func Login() gin.HandlerFunc {
 		successResponse.SendJSON(c.Writer, http.StatusOK)
 	}
 }
-
 func GetUsers() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		if err := helper.CheckUserType(c, "ADMIN"); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			response := helper.ErrorResponse(nil, err.Error())
+			response.SendJSON(c.Writer, http.StatusBadRequest)
 			return
 		}
+
 		var ctx, cancel = context.WithTimeout(context.Background(), 100*time.Second)
+		defer cancel()
 
 		recordPerPage, err := strconv.Atoi(c.Query("recordPerPage"))
 		if err != nil || recordPerPage < 1 {
 			recordPerPage = 10
 		}
+
 		page, err1 := strconv.Atoi(c.Query("page"))
 		if err1 != nil || page < 1 {
 			page = 1
 		}
 
 		startIndex := (page - 1) * recordPerPage
-		startIndex, err = strconv.Atoi(c.Query("startIndex"))
 
 		matchStage := bson.D{{"$match", bson.D{{}}}}
 		groupStage := bson.D{{"$group", bson.D{
@@ -192,15 +194,25 @@ func GetUsers() gin.HandlerFunc {
 				{"user_items", bson.D{{"$slice", []interface{}{"$data", startIndex, recordPerPage}}}}}}}
 		result, err := userCollection.Aggregate(ctx, mongo.Pipeline{
 			matchStage, groupStage, projectStage})
-		defer cancel()
+
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "error occured while listing user items"})
+			response := helper.ErrorResponse(nil, "Error occurred while listing user items")
+			response.SendJSON(c.Writer, http.StatusInternalServerError)
+			return
 		}
+
 		var allusers []bson.M
-		if err = result.All(ctx, &allusers); err != nil {
+		if err := result.All(ctx, &allusers); err != nil {
 			log.Fatal(err)
 		}
-		c.JSON(http.StatusOK, allusers[0])
+
+		if len(allusers) > 0 {
+			response := helper.SuccessResponse(allusers[0], "")
+			response.SendJSON(c.Writer, http.StatusOK)
+		} else {
+			response := helper.NotFoundResponse(nil, "No users found")
+			response.SendJSON(c.Writer, http.StatusNotFound)
+		}
 	}
 }
 
@@ -209,18 +221,23 @@ func GetUser() gin.HandlerFunc {
 		userId := c.Param("user_id")
 
 		if err := helper.MatchUserTypeToUid(c, userId); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			response := helper.ErrorResponse(nil, err.Error())
+			response.SendJSON(c.Writer, http.StatusBadRequest)
 			return
 		}
+
 		var ctx, cancel = context.WithTimeout(context.Background(), 100*time.Second)
+		defer cancel()
 
 		var user models.User
 		err := userCollection.FindOne(ctx, bson.M{"user_id": userId}).Decode(&user)
-		defer cancel()
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			response := helper.ErrorResponse(nil, err.Error())
+			response.SendJSON(c.Writer, http.StatusInternalServerError)
 			return
 		}
-		c.JSON(http.StatusOK, user)
+
+		response := helper.SuccessResponse(user, "")
+		response.SendJSON(c.Writer, http.StatusOK)
 	}
 }

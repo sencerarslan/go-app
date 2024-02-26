@@ -31,7 +31,6 @@ func ShowMenu() gin.HandlerFunc {
 		var menuID = responseData.Menu_id
 		var ctx, cancel = context.WithTimeout(context.Background(), 100*time.Second)
 
-		// Menu verisini al
 		var menu models.Menu
 		err := menuCollection.FindOne(ctx, bson.M{"menu_id": menuID}).Decode(&menu)
 		if err != nil {
@@ -41,7 +40,6 @@ func ShowMenu() gin.HandlerFunc {
 			return
 		}
 
-		// MenuItem verilerini al
 		var menuItems []models.MenuItem
 		cursor, err := menuItemCollection.Find(ctx, bson.M{"menu_id": menuID})
 		if err != nil {
@@ -70,7 +68,6 @@ func ShowMenu() gin.HandlerFunc {
 			return
 		}
 
-		// Menu ve MenuItem verilerini birleştirerek yanıt oluştur
 		response := gin.H{
 			"menu_id":    menu.Menu_id,
 			"name":       menu.Name,
@@ -84,14 +81,11 @@ func ShowMenu() gin.HandlerFunc {
 }
 func AllGetMenu() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		// Authenticate middleware'ini kullanarak kimlik doğrulaması yap
 		middleware.Authenticate()(c)
 
-		// Kullanıcı kimliğini al
 		userID := c.GetString("uid")
 		var ctx, cancel = context.WithTimeout(context.Background(), 100*time.Second)
 
-		// Menü verilerini al
 		var menus []models.Menu
 		cursor, err := menuCollection.Find(ctx, bson.M{"user_id": userID})
 		if err != nil {
@@ -109,7 +103,6 @@ func AllGetMenu() gin.HandlerFunc {
 				return
 			}
 
-			// MenuItem verilerini al
 			var menuItems []models.MenuItem
 			menuItemCursor, err := menuItemCollection.Find(ctx, bson.M{"menu_id": menu.Menu_id})
 			if err != nil {
@@ -145,7 +138,6 @@ func AllGetMenu() gin.HandlerFunc {
 			return
 		}
 
-		// Menü ve MenuItem verilerini birleştirerek yanıt oluştur
 		response := menus
 		successResponse := helper.SuccessResponse(response, "")
 		successResponse.SendJSON(c.Writer, http.StatusOK)
@@ -157,28 +149,28 @@ func GetMenu() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var responseData models.Menu
 		if err := c.BindJSON(&responseData); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			response := helper.ErrorResponse(nil, err.Error())
+			response.SendJSON(c.Writer, http.StatusBadRequest)
 			return
 		}
 
 		var menuID = responseData.Menu_id
 		var ctx, cancel = context.WithTimeout(context.Background(), 100*time.Second)
+		defer cancel()
 
-		// Menu verisini al
 		var menu models.Menu
 		err := menuCollection.FindOne(ctx, bson.M{"menu_id": menuID}).Decode(&menu)
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-			cancel()
+			response := helper.ErrorResponse(nil, err.Error())
+			response.SendJSON(c.Writer, http.StatusInternalServerError)
 			return
 		}
 
-		// MenuItem verilerini al
 		var menuItems []models.MenuItem
 		cursor, err := menuItemCollection.Find(ctx, bson.M{"menu_id": menuID})
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-			cancel()
+			response := helper.ErrorResponse(nil, err.Error())
+			response.SendJSON(c.Writer, http.StatusInternalServerError)
 			return
 		}
 		defer cursor.Close(ctx)
@@ -186,129 +178,122 @@ func GetMenu() gin.HandlerFunc {
 		for cursor.Next(ctx) {
 			var menuItem models.MenuItem
 			if err := cursor.Decode(&menuItem); err != nil {
-				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-				cancel()
+				response := helper.ErrorResponse(nil, err.Error())
+				response.SendJSON(c.Writer, http.StatusInternalServerError)
 				return
 			}
 			menuItems = append(menuItems, menuItem)
 		}
 
 		if err := cursor.Err(); err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-			cancel()
+			response := helper.ErrorResponse(nil, err.Error())
+			response.SendJSON(c.Writer, http.StatusInternalServerError)
 			return
 		}
 
-		// Menu ve MenuItem verilerini birleştirerek yanıt oluştur
 		response := gin.H{
-			"menu": gin.H{
-				"ID":         menu.ID,
-				"menu_id":    menu.Menu_id,
-				"user_id":    menu.User_id,
-				"name":       menu.Name,
-				"created_at": menu.Created_at,
-				"updated_at": menu.Updated_at,
-				"menu_items": menuItems,
-			},
+			"ID":         menu.ID,
+			"menu_id":    menu.Menu_id,
+			"user_id":    menu.User_id,
+			"name":       menu.Name,
+			"created_at": menu.Created_at,
+			"updated_at": menu.Updated_at,
+			"menu_items": menuItems,
 		}
 
-		c.JSON(http.StatusOK, response)
+		successResponse := helper.SuccessResponse(response, "")
+		successResponse.SendJSON(c.Writer, http.StatusOK)
 		cancel()
 	}
 }
 
 func AddMenu() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		// Authenticate middleware'ini kullanarak kimlik doğrulaması yap
 		middleware.Authenticate()(c)
 
-		// Kullanıcı kimliğini al
 		userID := c.GetString("uid")
 
-		// Kullanıcı kimliğiyle ilgili kullanıcıyı veritabanından al
 		var ctx, cancel = context.WithTimeout(context.Background(), 100*time.Second)
+		defer cancel()
+
 		var user models.User
 		err := userCollection.FindOne(ctx, bson.M{"user_id": userID}).Decode(&user)
-		defer cancel()
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "User not found"})
+			response := helper.ErrorResponse(nil, "User not found")
+			response.SendJSON(c.Writer, http.StatusInternalServerError)
 			return
 		}
 
-		// Gelen isteği Menu yapısına bind et
 		var menu models.Menu
 		if err := c.BindJSON(&menu); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			response := helper.ErrorResponse(nil, err.Error())
+			response.SendJSON(c.Writer, http.StatusBadRequest)
 			return
 		}
 
-		// Gelen veriyi doğrula
 		validationErr := validate.Struct(menu)
 		if validationErr != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": validationErr.Error()})
+			response := helper.ErrorResponse(nil, validationErr.Error())
+			response.SendJSON(c.Writer, http.StatusBadRequest)
 			return
 		}
 
-		// Menu verisini hazırla
-		menuID := primitive.NewObjectID().Hex() // Rastgele bir ID oluştur
+		menuID := primitive.NewObjectID().Hex()
 		menu.ID = primitive.NewObjectID()
 		menu.User_id = &userID
 		menu.Menu_id = &menuID
 		menu.Created_at = time.Now()
 		menu.Updated_at = time.Now()
 
-		// Menu verisini veritabanına ekle
 		_, err = menuCollection.InsertOne(ctx, menu)
-		defer cancel()
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Error while adding menu"})
+			response := helper.ErrorResponse(nil, "Error while adding menu")
+			response.SendJSON(c.Writer, http.StatusInternalServerError)
 			return
 		}
 
-		c.JSON(http.StatusOK, gin.H{"message": "Menu added successfully", "menu": menu})
+		responseData := gin.H{
+			"message": "Menu added successfully",
+			"menu":    menu,
+		}
+		response := helper.SuccessResponse(responseData, "")
+		response.SendJSON(c.Writer, http.StatusOK)
 	}
 }
+
 func AddMenuItem() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		// Authenticate middleware'ini kullanarak kimlik doğrulaması yap
 		middleware.Authenticate()(c)
 
-		// Kullanıcı kimliğini al
 		userID := c.GetString("uid")
 
-		// Kullanıcı kimliğiyle ilgili kullanıcıyı veritabanından al
 		var ctx, cancel = context.WithTimeout(context.Background(), 100*time.Second)
+		defer cancel()
+
 		var user models.User
 		err := userCollection.FindOne(ctx, bson.M{"user_id": userID}).Decode(&user)
-		defer cancel()
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "User not found"})
+			response := helper.ErrorResponse(nil, "User not found")
+			response.SendJSON(c.Writer, http.StatusInternalServerError)
 			return
 		}
 
-		// Gelen isteği MenuItem yapısına bind et
 		var menuItem models.MenuItem
 		if err := c.BindJSON(&menuItem); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			response := helper.ErrorResponse(nil, err.Error())
+			response.SendJSON(c.Writer, http.StatusBadRequest)
 			return
 		}
 
-		// Gelen veriyi doğrula
 		validationErr := validate.Struct(menuItem)
 		if validationErr != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": validationErr.Error()})
+			response := helper.ErrorResponse(nil, validationErr.Error())
+			response.SendJSON(c.Writer, http.StatusBadRequest)
 			return
 		}
 
 		if menuItem.ID != primitive.NilObjectID {
-
-			// Güncelleme işlemi yapılacak
-
-			// Güncellenecek belgeyi belirlemek için bir filtre oluşturun
 			filter := bson.M{"_id": menuItem.ID}
-
-			// Yeni değerlerin atanacağı bir döküman oluşturun
-
 			update := bson.M{
 				"$set": bson.M{
 					"name":        menuItem.Name,
@@ -316,76 +301,80 @@ func AddMenuItem() gin.HandlerFunc {
 					"price":       menuItem.Price,
 					"imageurl":    menuItem.ImageURL,
 					"updated_at":  time.Now(),
-					// Diğer alanları da güncelleyebilirsiniz
 				},
 			}
 
-			// UpdateOne fonksiyonunu kullanarak güncelleme işlemini gerçekleştirin
 			updateResult, err := menuItemCollection.UpdateOne(ctx, filter, update)
 			if err != nil {
-				c.JSON(http.StatusInternalServerError, gin.H{"error": "Error while updating menu item"})
+				response := helper.ErrorResponse(nil, "Error while updating menu item")
+				response.SendJSON(c.Writer, http.StatusInternalServerError)
 				return
 			}
 
-			// Güncellenen belgenin sayısını kontrol edin
 			if updateResult.ModifiedCount == 0 {
-				c.JSON(http.StatusNotFound, gin.H{"error": "Menu item not found"})
+				response := helper.ErrorResponse(nil, "Menu item not found")
+				response.SendJSON(c.Writer, http.StatusNotFound)
 				return
 			}
 
-			// Başarılı güncelleme durumunda mesajı ve güncellenen menü öğesini döndürün
-			c.JSON(http.StatusOK, gin.H{"message": "Menu item updated successfully", "menu_item": menuItem})
+			responseData := gin.H{
+				"message":   "Menu item updated successfully",
+				"menu_item": menuItem,
+			}
+			response := helper.SuccessResponse(responseData, "")
+			response.SendJSON(c.Writer, http.StatusOK)
 			return
 		}
 
-		// MenuItem verisini hazırla
 		menuItem.ID = primitive.NewObjectID()
 		menuItem.Created_at = time.Now()
 		menuItem.Updated_at = time.Now()
 
-		// MenuItem verisini veritabanına ekle
 		_, err = menuItemCollection.InsertOne(ctx, menuItem)
-		defer cancel()
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Error while adding menu item"})
+			response := helper.ErrorResponse(nil, "Error while adding menu item")
+			response.SendJSON(c.Writer, http.StatusInternalServerError)
 			return
 		}
 
-		c.JSON(http.StatusOK, gin.H{"message": "Menu item added successfully", "menu_item": menuItem})
+		responseData := gin.H{
+			"message":   "Menu item added successfully",
+			"menu_item": menuItem,
+		}
+		response := helper.SuccessResponse(responseData, "")
+		response.SendJSON(c.Writer, http.StatusOK)
 	}
 }
 func DeleteMenuItem() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		// Authenticate middleware'ini kullanarak kimlik doğrulaması yap
 		middleware.Authenticate()(c)
 
-		// Gelen isteği MenuItem yapısına bind et
 		var menuItem models.MenuItem
 		if err := c.BindJSON(&menuItem); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			response := helper.ErrorResponse(nil, err.Error())
+			response.SendJSON(c.Writer, http.StatusBadRequest)
 			return
 		}
 
-		// Bir context oluşturun
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 
-		// Silinecek belgeyi belirlemek için bir filtre oluşturun
 		filter := bson.M{"_id": menuItem.ID}
 
-		// DeleteOne fonksiyonunu kullanarak silme işlemini gerçekleştirin
 		deleteResult, err := menuItemCollection.DeleteOne(ctx, filter)
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Error while deleting menu item"})
+			response := helper.ErrorResponse(nil, "Error while deleting menu item")
+			response.SendJSON(c.Writer, http.StatusInternalServerError)
 			return
 		}
 
-		// Silinen belgenin sayısını kontrol edin
 		if deleteResult.DeletedCount == 0 {
-			c.JSON(http.StatusNotFound, gin.H{"error": "Menu item not found"})
+			response := helper.ErrorResponse(nil, "Menu item not found")
+			response.SendJSON(c.Writer, http.StatusNotFound)
 			return
 		}
 
-		c.JSON(http.StatusOK, gin.H{"message": "Menu item deleted successfully"})
+		response := helper.SuccessResponse(nil, "Menu item deleted successfully")
+		response.SendJSON(c.Writer, http.StatusOK)
 	}
 }
