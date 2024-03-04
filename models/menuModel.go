@@ -7,21 +7,30 @@ import (
 )
 
 type Menu struct {
-	ID         primitive.ObjectID `bson:"_id"`
-	Menu_id    *string            `json:"menu_id"`
-	User_id    *string            `json:"user_id"`
-	Name       *string            `json:"name" validate:"required"`
-	MenuItem   []MenuItem         `json:"menu_items"`
-	Created_at time.Time          `json:"created_at"`
-	Updated_at time.Time          `json:"updated_at"`
+	ID        primitive.ObjectID `bson:"_id"`
+	UserID    *string            `json:"user_id"`
+	Name      *string            `json:"name" validate:"required"`
+	Logo      *string            `json:"logo" validate:"required"`
+	Banner    *string            `json:"banner" validate:"required"`
+	MenuGroup []MenuGroup        `json:"menu_groups"`
+	CreatedAt time.Time          `json:"created_at"`
+	UpdatedAt time.Time          `json:"updated_at"`
+}
+type MenuGroup struct {
+	ID        primitive.ObjectID `bson:"_id"`
+	MenuID    *string            `json:"menu_id" validate:"required"`
+	Name      *string            `json:"name" validate:"required"`
+	MenuItem  []MenuItem         `json:"menu_items"`
+	CreatedAt time.Time          `json:"created_at"`
+	UpdatedAt time.Time          `json:"updated_at"`
 }
 type MenuItem struct {
 	ID          primitive.ObjectID `bson:"_id"`
-	Menu_id     *string            `json:"menu_id"`
+	GroupID     *string            `json:"group_id"`
 	Name        *string            `json:"name" validate:"required"`
 	Price       float64            `json:"price" validate:"required"`
 	Description *string            `json:"description" validate:"required"`
 	ImageURL    *string            `json:"image_url" validate:"required"`
-	Created_at  time.Time          `json:"created_at"`
-	Updated_at  time.Time          `json:"updated_at"`
+	CreatedAt   time.Time          `json:"created_at"`
+	UpdatedAt   time.Time          `json:"updated_at"`
 }

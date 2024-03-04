@@ -17,135 +17,71 @@ import (
 )
 
 var menuCollection *mongo.Collection = database.OpenCollection(database.Client, "menu")
+var menuGroupCollection *mongo.Collection = database.OpenCollection(database.Client, "menu-group")
 var menuItemCollection *mongo.Collection = database.OpenCollection(database.Client, "menu-item")
 
+func useContext() (context.Context, context.CancelFunc) {
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Second)
+	return ctx, cancel
+}
+
+func getMenuByID(menuID primitive.ObjectID) (models.Menu, error) {
+	ctx, cancel := useContext()
+	defer cancel()
+
+	var data models.Menu
+	err := menuCollection.FindOne(ctx, bson.M{"_id": menuID}).Decode(&data)
+	if err != nil {
+		return models.Menu{}, err
+	}
+
+	return data, nil
+}
+func getMenuGroupByAll(menuID string) ([]models.MenuGroup, error) {
+	ctx, cancel := useContext()
+	defer cancel()
+
+	cursor, err := menuGroupCollection.Find(ctx, bson.M{"menuid": menuID})
+	if err != nil {
+		return nil, err
+	}
+	defer cursor.Close(ctx)
+
+	var items = make([]models.MenuGroup, 0)
+	for cursor.Next(ctx) {
+		var item models.MenuGroup
+		if err := cursor.Decode(&item); err != nil {
+			return nil, err
+		}
+		items = append(items, item)
+	}
+
+	return items, nil
+}
+
+func getMenuItemByID(groupID string) ([]models.MenuItem, error) {
+	ctx, cancel := useContext()
+	defer cancel()
+
+	cursor, err := menuItemCollection.Find(ctx, bson.M{"groupid": groupID})
+	if err != nil {
+		return nil, err
+	}
+	defer cursor.Close(ctx)
+
+	items := make([]models.MenuItem, 0)
+	for cursor.Next(ctx) {
+		var item models.MenuItem
+		if err := cursor.Decode(&item); err != nil {
+			return nil, err
+		}
+		items = append(items, item)
+	}
+
+	return items, nil
+}
+
 func ShowMenu() gin.HandlerFunc {
-	return func(c *gin.Context) {
-		var responseData models.Menu
-		if err := c.BindJSON(&responseData); err != nil {
-			errorResponse := helper.ErrorResponse(nil, err.Error())
-			errorResponse.SendJSON(c.Writer, http.StatusBadRequest)
-			return
-		}
-
-		var menuID = responseData.Menu_id
-		var ctx, cancel = context.WithTimeout(context.Background(), 100*time.Second)
-
-		var menu models.Menu
-		err := menuCollection.FindOne(ctx, bson.M{"menu_id": menuID}).Decode(&menu)
-		if err != nil {
-			errorResponse := helper.ErrorResponse(nil, err.Error())
-			errorResponse.SendJSON(c.Writer, http.StatusInternalServerError)
-			cancel()
-			return
-		}
-
-		var menuItems []models.MenuItem
-		cursor, err := menuItemCollection.Find(ctx, bson.M{"menu_id": menuID})
-		if err != nil {
-			errorResponse := helper.ErrorResponse(nil, err.Error())
-			errorResponse.SendJSON(c.Writer, http.StatusInternalServerError)
-			cancel()
-			return
-		}
-		defer cursor.Close(ctx)
-
-		for cursor.Next(ctx) {
-			var menuItem models.MenuItem
-			if err := cursor.Decode(&menuItem); err != nil {
-				errorResponse := helper.ErrorResponse(nil, err.Error())
-				errorResponse.SendJSON(c.Writer, http.StatusInternalServerError)
-				cancel()
-				return
-			}
-			menuItems = append(menuItems, menuItem)
-		}
-
-		if err := cursor.Err(); err != nil {
-			errorResponse := helper.ErrorResponse(nil, err.Error())
-			errorResponse.SendJSON(c.Writer, http.StatusInternalServerError)
-			cancel()
-			return
-		}
-
-		response := gin.H{
-			"menu_id":    menu.Menu_id,
-			"name":       menu.Name,
-			"menu_items": menuItems,
-		}
-
-		successResponse := helper.SuccessResponse(response, "")
-		successResponse.SendJSON(c.Writer, http.StatusOK)
-		cancel()
-	}
-}
-func AllGetMenu() gin.HandlerFunc {
-	return func(c *gin.Context) {
-		middleware.Authenticate()(c)
-
-		userID := c.GetString("uid")
-		var ctx, cancel = context.WithTimeout(context.Background(), 100*time.Second)
-
-		var menus []models.Menu
-		cursor, err := menuCollection.Find(ctx, bson.M{"user_id": userID})
-		if err != nil {
-			helper.ErrorResponse(c, err.Error())
-			cancel()
-			return
-		}
-		defer cursor.Close(ctx)
-
-		for cursor.Next(ctx) {
-			var menu models.Menu
-			if err := cursor.Decode(&menu); err != nil {
-				helper.ErrorResponse(c, err.Error())
-				cancel()
-				return
-			}
-
-			var menuItems []models.MenuItem
-			menuItemCursor, err := menuItemCollection.Find(ctx, bson.M{"menu_id": menu.Menu_id})
-			if err != nil {
-				helper.ErrorResponse(c, err.Error())
-				cancel()
-				return
-			}
-			defer menuItemCursor.Close(ctx)
-
-			for menuItemCursor.Next(ctx) {
-				var menuItem models.MenuItem
-				if err := menuItemCursor.Decode(&menuItem); err != nil {
-					helper.ErrorResponse(c, err.Error())
-					cancel()
-					return
-				}
-				menuItems = append(menuItems, menuItem)
-			}
-
-			if err := menuItemCursor.Err(); err != nil {
-				helper.ErrorResponse(c, err.Error())
-				cancel()
-				return
-			}
-
-			menu.MenuItem = menuItems
-			menus = append(menus, menu)
-		}
-
-		if err := cursor.Err(); err != nil {
-			helper.ErrorResponse(c, err.Error())
-			cancel()
-			return
-		}
-
-		response := menus
-		successResponse := helper.SuccessResponse(response, "")
-		successResponse.SendJSON(c.Writer, http.StatusOK)
-		cancel()
-	}
-}
-
-func GetMenu() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var responseData models.Menu
 		if err := c.BindJSON(&responseData); err != nil {
@@ -154,20 +90,77 @@ func GetMenu() gin.HandlerFunc {
 			return
 		}
 
-		var menuID = responseData.Menu_id
-		var ctx, cancel = context.WithTimeout(context.Background(), 100*time.Second)
-		defer cancel()
+		menuID := responseData.ID
 
-		var menu models.Menu
-		err := menuCollection.FindOne(ctx, bson.M{"menu_id": menuID}).Decode(&menu)
+		menu, err := getMenuByID(menuID)
 		if err != nil {
 			response := helper.ErrorResponse(nil, err.Error())
 			response.SendJSON(c.Writer, http.StatusInternalServerError)
 			return
 		}
 
-		var menuItems []models.MenuItem
-		cursor, err := menuItemCollection.Find(ctx, bson.M{"menu_id": menuID})
+		menuGroups, err := getMenuGroupByAll(menuID.Hex())
+		if err != nil {
+			response := helper.ErrorResponse(nil, err.Error())
+			response.SendJSON(c.Writer, http.StatusInternalServerError)
+			return
+		}
+
+		menuItems := make([][]models.MenuItem, len(menuGroups))
+		for i, group := range menuGroups {
+			groupID := group.ID.Hex()
+			menuItems[i], err = getMenuItemByID(groupID)
+			if err != nil {
+				response := helper.ErrorResponse(nil, err.Error())
+				response.SendJSON(c.Writer, http.StatusInternalServerError)
+				return
+			}
+		}
+
+		menuGroupsArray := make([]gin.H, len(menuGroups))
+		for i, group := range menuGroups {
+			menuItemsArray := make([]gin.H, len(menuItems[i]))
+			for j, item := range menuItems[i] {
+				menuItem := gin.H{
+					"id":          item.ID,
+					"group_id":    item.GroupID,
+					"name":        item.Name,
+					"price":       item.Price,
+					"description": item.Description,
+					"image_url":   item.ImageURL,
+				}
+				menuItemsArray[j] = menuItem
+			}
+
+			menuGroup := gin.H{
+				"id":    group.ID,
+				"name":  group.Name,
+				"items": menuItemsArray,
+			}
+			menuGroupsArray[i] = menuGroup
+		}
+
+		response := gin.H{
+			"id":          menu.ID,
+			"name":        menu.Name,
+			"logo":        menu.Logo,
+			"banner":      menu.Banner,
+			"menu_groups": menuGroupsArray,
+		}
+
+		successResponse := helper.SuccessResponse(response, "")
+		successResponse.SendJSON(c.Writer, http.StatusOK)
+	}
+}
+
+func GetMenu() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		ctx, cancel := useContext()
+		defer cancel()
+
+		userID := c.GetString("uid")
+
+		cursor, err := menuCollection.Find(ctx, bson.M{"userid": userID})
 		if err != nil {
 			response := helper.ErrorResponse(nil, err.Error())
 			response.SendJSON(c.Writer, http.StatusInternalServerError)
@@ -175,39 +168,28 @@ func GetMenu() gin.HandlerFunc {
 		}
 		defer cursor.Close(ctx)
 
+		var items []gin.H
 		for cursor.Next(ctx) {
-			var menuItem models.MenuItem
-			if err := cursor.Decode(&menuItem); err != nil {
+			var item models.Menu
+			if err := cursor.Decode(&item); err != nil {
 				response := helper.ErrorResponse(nil, err.Error())
 				response.SendJSON(c.Writer, http.StatusInternalServerError)
 				return
 			}
-			menuItems = append(menuItems, menuItem)
+			responseItem := gin.H{
+				"id":     item.ID,
+				"name":   item.Name,
+				"logo":   item.Logo,
+				"banner": item.Banner,
+			}
+			items = append(items, responseItem)
 		}
 
-		if err := cursor.Err(); err != nil {
-			response := helper.ErrorResponse(nil, err.Error())
-			response.SendJSON(c.Writer, http.StatusInternalServerError)
-			return
-		}
-
-		response := gin.H{
-			"ID":         menu.ID,
-			"menu_id":    menu.Menu_id,
-			"user_id":    menu.User_id,
-			"name":       menu.Name,
-			"created_at": menu.Created_at,
-			"updated_at": menu.Updated_at,
-			"menu_items": menuItems,
-		}
-
-		successResponse := helper.SuccessResponse(response, "")
+		successResponse := helper.SuccessResponse(items, "")
 		successResponse.SendJSON(c.Writer, http.StatusOK)
-		cancel()
 	}
 }
-
-func AddMenu() gin.HandlerFunc {
+func AddUpdateMenu() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		middleware.Authenticate()(c)
 
@@ -238,12 +220,44 @@ func AddMenu() gin.HandlerFunc {
 			return
 		}
 
-		menuID := primitive.NewObjectID().Hex()
+		if menu.ID != primitive.NilObjectID {
+			filter := bson.M{"_id": menu.ID}
+			update := bson.M{
+				"$set": bson.M{
+					"name":       menu.Name,
+					"logo":       menu.Logo,
+					"banner":     menu.Banner,
+					"updated_at": time.Now(),
+				},
+			}
+
+			updateResult, err := menuCollection.UpdateOne(ctx, filter, update)
+			if err != nil {
+				response := helper.ErrorResponse(nil, "Error while updating menu item")
+				response.SendJSON(c.Writer, http.StatusInternalServerError)
+				return
+			}
+
+			if updateResult.ModifiedCount == 0 {
+				response := helper.ErrorResponse(nil, "Menu item not found")
+				response.SendJSON(c.Writer, http.StatusNotFound)
+				return
+			}
+
+			responseData := gin.H{
+				"message":   "Menu item updated successfully",
+				"menu_item": menu,
+			}
+			response := helper.SuccessResponse(responseData, "")
+			response.SendJSON(c.Writer, http.StatusOK)
+			return
+		}
+
 		menu.ID = primitive.NewObjectID()
-		menu.User_id = &userID
-		menu.Menu_id = &menuID
-		menu.Created_at = time.Now()
-		menu.Updated_at = time.Now()
+		menu.UserID = &userID
+		menu.MenuGroup = make([]models.MenuGroup, 0)
+		menu.CreatedAt = time.Now()
+		menu.UpdatedAt = time.Now()
 
 		_, err = menuCollection.InsertOne(ctx, menu)
 		if err != nil {
@@ -252,16 +266,202 @@ func AddMenu() gin.HandlerFunc {
 			return
 		}
 
-		responseData := gin.H{
-			"message": "Menu added successfully",
-			"menu":    menu,
+		response := helper.SuccessResponse(menu, "Menu added successfully")
+		response.SendJSON(c.Writer, http.StatusOK)
+	}
+}
+func DeleteMenu() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		middleware.Authenticate()(c)
+
+		var menu models.Menu
+		if err := c.BindJSON(&menu); err != nil {
+			response := helper.ErrorResponse(nil, err.Error())
+			response.SendJSON(c.Writer, http.StatusBadRequest)
+			return
 		}
-		response := helper.SuccessResponse(responseData, "")
+
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+
+		filter := bson.M{"_id": menu.ID}
+
+		deleteResult, err := menuCollection.DeleteOne(ctx, filter)
+		if err != nil {
+			response := helper.ErrorResponse(nil, "Error while deleting menu item")
+			response.SendJSON(c.Writer, http.StatusInternalServerError)
+			return
+		}
+
+		if deleteResult.DeletedCount == 0 {
+			response := helper.ErrorResponse(nil, "Menu item not found")
+			response.SendJSON(c.Writer, http.StatusNotFound)
+			return
+		}
+
+		response := helper.SuccessResponse(nil, "Menu item deleted successfully")
 		response.SendJSON(c.Writer, http.StatusOK)
 	}
 }
 
-func AddMenuItem() gin.HandlerFunc {
+func GetGroup() gin.HandlerFunc {
+	return func(c *gin.Context) {
+
+		var responseData models.MenuGroup
+		if err := c.BindJSON(&responseData); err != nil {
+			response := helper.ErrorResponse(nil, err.Error())
+			response.SendJSON(c.Writer, http.StatusBadRequest)
+			return
+		}
+
+		menuID := responseData.ID.Hex()
+
+		data, err := getMenuGroupByAll(menuID)
+		if err != nil {
+			response := helper.ErrorResponse(nil, err.Error())
+			response.SendJSON(c.Writer, http.StatusInternalServerError)
+			return
+		}
+
+		successResponse := helper.SuccessResponse(data, "")
+		successResponse.SendJSON(c.Writer, http.StatusOK)
+	}
+}
+func AddUpdateGroup() gin.HandlerFunc {
+	return func(c *gin.Context) {
+
+		ctx, cancel := useContext()
+		defer cancel()
+
+		userID := c.GetString("uid")
+
+		var user models.User
+		err := userCollection.FindOne(ctx, bson.M{"user_id": userID}).Decode(&user)
+		if err != nil {
+			response := helper.ErrorResponse(nil, "User not found")
+			response.SendJSON(c.Writer, http.StatusInternalServerError)
+			return
+		}
+
+		var menuGroup models.MenuGroup
+		if err := c.BindJSON(&menuGroup); err != nil {
+			response := helper.ErrorResponse(nil, err.Error())
+			response.SendJSON(c.Writer, http.StatusBadRequest)
+			return
+		}
+
+		validationErr := validate.Struct(menuGroup)
+		if validationErr != nil {
+			response := helper.ErrorResponse(nil, validationErr.Error())
+			response.SendJSON(c.Writer, http.StatusBadRequest)
+			return
+		}
+
+		if menuGroup.ID != primitive.NilObjectID {
+			filter := bson.M{"_id": menuGroup.ID}
+			update := bson.M{
+				"$set": bson.M{
+					"name":       menuGroup.Name,
+					"updated_at": time.Now(),
+				},
+			}
+
+			updateResult, err := menuGroupCollection.UpdateOne(ctx, filter, update)
+			if err != nil {
+				response := helper.ErrorResponse(nil, "Error while updating menu item")
+				response.SendJSON(c.Writer, http.StatusInternalServerError)
+				return
+			}
+
+			if updateResult.ModifiedCount == 0 {
+				response := helper.ErrorResponse(nil, "Menu item not found")
+				response.SendJSON(c.Writer, http.StatusNotFound)
+				return
+			}
+
+			responseData := gin.H{
+				"message":   "Menu item updated successfully",
+				"menu_item": menuGroup,
+			}
+			response := helper.SuccessResponse(responseData, "")
+			response.SendJSON(c.Writer, http.StatusOK)
+			return
+		}
+
+		menuGroup.ID = primitive.NewObjectID()
+		menuGroup.MenuItem = make([]models.MenuItem, 0)
+		menuGroup.CreatedAt = time.Now()
+		menuGroup.UpdatedAt = time.Now()
+
+		_, err = menuGroupCollection.InsertOne(ctx, menuGroup)
+		if err != nil {
+			response := helper.ErrorResponse(nil, "Error while adding menu item")
+			response.SendJSON(c.Writer, http.StatusInternalServerError)
+			return
+		}
+
+		response := helper.SuccessResponse(menuGroup, "")
+		response.SendJSON(c.Writer, http.StatusOK)
+	}
+}
+func DeleteGroup() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		middleware.Authenticate()(c)
+
+		var menuGroup models.MenuGroup
+		if err := c.BindJSON(&menuGroup); err != nil {
+			response := helper.ErrorResponse(nil, err.Error())
+			response.SendJSON(c.Writer, http.StatusBadRequest)
+			return
+		}
+
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+
+		filter := bson.M{"_id": menuGroup.ID}
+
+		deleteResult, err := menuGroupCollection.DeleteOne(ctx, filter)
+		if err != nil {
+			response := helper.ErrorResponse(nil, "Error while deleting menu item")
+			response.SendJSON(c.Writer, http.StatusInternalServerError)
+			return
+		}
+
+		if deleteResult.DeletedCount == 0 {
+			response := helper.ErrorResponse(nil, "Menu item not found")
+			response.SendJSON(c.Writer, http.StatusNotFound)
+			return
+		}
+
+		response := helper.SuccessResponse(nil, "Menu item deleted successfully")
+		response.SendJSON(c.Writer, http.StatusOK)
+	}
+}
+
+func GetItem() gin.HandlerFunc {
+	return func(c *gin.Context) {
+
+		var responseData models.MenuItem
+		if err := c.BindJSON(&responseData); err != nil {
+			response := helper.ErrorResponse(nil, err.Error())
+			response.SendJSON(c.Writer, http.StatusBadRequest)
+			return
+		}
+
+		menuGroupID := responseData.ID.Hex()
+
+		data, err := getMenuItemByID(menuGroupID)
+		if err != nil {
+			response := helper.ErrorResponse(nil, err.Error())
+			response.SendJSON(c.Writer, http.StatusInternalServerError)
+			return
+		}
+
+		successResponse := helper.SuccessResponse(data, "")
+		successResponse.SendJSON(c.Writer, http.StatusOK)
+	}
+}
+func AddUpdateItem() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		middleware.Authenticate()(c)
 
@@ -327,8 +527,8 @@ func AddMenuItem() gin.HandlerFunc {
 		}
 
 		menuItem.ID = primitive.NewObjectID()
-		menuItem.Created_at = time.Now()
-		menuItem.Updated_at = time.Now()
+		menuItem.CreatedAt = time.Now()
+		menuItem.UpdatedAt = time.Now()
 
 		_, err = menuItemCollection.InsertOne(ctx, menuItem)
 		if err != nil {
@@ -345,7 +545,7 @@ func AddMenuItem() gin.HandlerFunc {
 		response.SendJSON(c.Writer, http.StatusOK)
 	}
 }
-func DeleteMenuItem() gin.HandlerFunc {
+func DeleteItem() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		middleware.Authenticate()(c)
 

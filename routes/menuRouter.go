@@ -7,12 +7,21 @@ import (
 )
 
 func AuthMenuRoutes(incomingRoutes *gin.Engine) {
-	incomingRoutes.Use(middleware.Authenticate())
 
-	incomingRoutes.GET("/all-menu", controller.AllGetMenu())
-	incomingRoutes.POST("/menu", controller.GetMenu())
-	incomingRoutes.POST("/menu/add", controller.AddMenu())
-	incomingRoutes.POST("/menu/item/add", controller.AddMenuItem())
-	incomingRoutes.POST("/menu/item/delete", controller.DeleteMenuItem())
+	incomingRoutes.POST("/menu/show", controller.ShowMenu())
 
+	menu := incomingRoutes.Group("/menu")
+	menu.POST("", middleware.Authenticate(), controller.GetMenu())
+	menu.POST("/add", middleware.Authenticate(), controller.AddUpdateMenu())
+	menu.POST("/delete", middleware.Authenticate(), controller.DeleteMenu())
+
+	menuGroup := incomingRoutes.Group("/menu/group")
+	menuGroup.POST("", middleware.Authenticate(), controller.GetGroup())
+	menuGroup.POST("/add", middleware.Authenticate(), controller.AddUpdateGroup())
+	menuGroup.POST("/delete", middleware.Authenticate(), controller.DeleteGroup())
+
+	menuGroupItem := incomingRoutes.Group("/menu/group/item")
+	menuGroupItem.POST("", middleware.Authenticate(), controller.GetItem())
+	menuGroupItem.POST("/add", middleware.Authenticate(), controller.AddUpdateItem())
+	menuGroupItem.POST("/delete", middleware.Authenticate(), controller.DeleteItem())
 }
