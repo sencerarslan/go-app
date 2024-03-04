@@ -2,6 +2,15 @@
 
 Bu QR Menu uygulaması, restoranların menülerini dijitalleştirmek ve müşterilere kolay bir şekilde erişim sağlamak için kullanılır. Bu uygulama, kullanıcıların kaydolmalarını, giriş yapmalarını ve menülerin görüntülemelerini sağlar. 
 
+## Frontend
+React Proje: [https://github.com/sencerarslan/qr-menu.git](https://github.com/sencerarslan/qr-menu.git)
+
+## Demo
+
+Demo: [https://qr-menu-wheat.vercel.app/](https://qr-menu-wheat.vercel.app/)
+
+Demo Menu: [https://qr-menu-wheat.vercel.app/qr/65e5b0f2ae2dd5c28db6c381](https://qr-menu-wheat.vercel.app/qr/65e5b0f2ae2dd5c28db6c381)
+
 
 ## Kurulum
 
